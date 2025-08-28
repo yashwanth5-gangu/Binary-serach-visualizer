@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Advanced Binary Search Visualizer</title>
+  <style>
+    body { font-family: Arial; text-align: center; }
+    #arrayContainer, #treeContainer { display: flex; justify-content: center; flex-wrap: wrap; margin-top: 20px; }
+    .bar {
+      text-align: center;
+      font-size: 12px;
+      color: black;
+      font-weight: bold;
+      margin: 1px;
+      transition: all 0.3s ease;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      background-color: steelblue;
+      border-radius: 4px;
+    }
+    .low { background-color: yellow; }
+    .high { background-color: orange; }
+    .mid { background-color: red; color: white; }
+    .visited { background-color: lightgray; }
+    .target { background-color: green; color: white; }
+    .treeNode {
+      display: inline-block;
+      padding: 5px 10px;
+      margin: 5px;
+      border-radius: 4px;
+      background-color: lightblue;
+      transition: all 0.3s ease;
+    }
+    .treeMid { background-color: red; color: white; }
+    input, button, select { margin: 5px; }
+    #controls { margin-top: 20px; }
+    #status { margin-top: 15px; font-weight: bold; }
+  </style>
+</head>
+<body>
+
+<h1>Advanced Binary Search Visualizer</h1>
+
+<div id="controls">
+  <input type="number" id="target" placeholder="Target">
+  <input type="text" id="manualArray" placeholder="Comma separated array">
+  <button onclick="generateManualArray()">Manual Array</button>
+  <button onclick="generateRandomArray()">Random Array</button>
+  <label>Search Type:
+    <select id="searchType">
+      <option value="iterative">Iterative</option>
+      <option value="recursive">Recursive</option>
+    </select>
+  </label>
+  <label>Speed:
+    <select id="speed">
+      <option value="1000">Slow</option>
+      <option value="500" selected>Normal</option>
+      <option value="200">Fast</option>
+      <option value="50">Very Fast</option>
+    </select>
+  </label>
+  <br>
+  <button onclick="startSearch()">Start Search</button>
+  <button onclick="stepBackward()">Step Back</button>
+  <button onclick="stepForward()">Step Forward</button>
+  <button onclick="playPause()"><span id="playPauseText">Play</span></button>
+  <button onclick="resetVisualizer()">Reset</button> <!-- ✅ Added Reset -->
+</div>
+
+<h3>Array Visualization</h3>
+<div id="arrayContainer"></div>
+
+<h3>Recursive Tree Visualization</h3>
+<div id="treeContainer"></div>
+
+<div id="status"></div>
+<div id="stats"></div>
+
+<script>
+let arr = [];
+let states = [];
+let currentStep = 0;
+let isPlaying = false;
+let animationSpeed = 500;
+let arrayChosen = false;
+let treeNodes = [];
+let interval;
+
+// Generate Random Array
+function generateRandomArray() {
+  let size = parseInt(prompt("Enter array size (max 50 recommended):", "20"));
+  if (isNaN(size) || size <= 0) size = 20;
+  arr = [];
+  for (let i = 0; i < size; i++) arr.push(Math.floor(Math.random() * 100) + 1);
+  arr.sort((a, b) => a - b);
+  arrayChosen = true;
+  resetState();
+  renderArray(-1, -1, -1, []);
+}
+
+// Generate Manual Array
+function generateManualArray() {
+  const input = document.getElementById('manualArray').value;
+  if (!input) return alert("Enter array values separated by commas");
+  arr = input.split(',').map(Number).filter(n => !isNaN(n));
+  if (arr.length === 0) return alert("Invalid array");
+  arr.sort((a, b) => a - b);
+  arrayChosen = true;
+  resetState();
+  renderArray(-1, -1, -1, []);
+}
+
+// Reset State
+function resetState() {
+  currentStep = 0;
+  states = [];
+  treeNodes = [];
+  isPlaying = false;
+  clearInterval(interval);
+  document.getElementById('playPauseText').innerText = 'Play';
+  document.getElementById('status').innerText = '';
+  document.getElementById('stats').innerText = '';
+  renderArray(-1, -1, -1, []);
+  renderTree();
+}
+
+// Render Array
+function renderArray(low, high, mid, visited, targetIndex = -1) {
+  const container = document.getElementById('arrayContainer');
+  container.innerHTML = '';
+  const len = arr.length || 1;
+  const barWidth = Math.max(20, Math.floor(800 / len));
+  const maxVal = Math.max(...arr, 1);
+  for (let i = 0; i < arr.length; i++) {
+    const bar = document.createElement('div');
+    bar.className = 'bar';
+    bar.style.width = barWidth + 'px';
+    bar.style.height = (arr[i] / maxVal * 250 + 30) + 'px';
+    bar.innerText = arr[i];
+    if (i === low) bar.classList.add('low');
+    if (i === high) bar.classList.add('high');
+    if (i === mid) bar.classList.add('mid');
+    if (visited.includes(i)) bar.classList.add('visited');
+    if (i === targetIndex) bar.classList.add('target');
+    container.appendChild(bar);
+  }
+}
+
+// Render Tree
+function renderTree(highlightStep = -1) {
+  const container = document.getElementById('treeContainer');
+  container.innerHTML = '';
+  treeNodes.forEach(node => {
+    const div = document.createElement('div');
+    div.className = 'treeNode';
+    if (node.step === highlightStep) div.classList.add('treeMid');
+    div.innerText = `[${node.low}-${node.high}] mid:${node.mid}`;
+    container.appendChild(div);
+  });
+}
+
+// Start Search
+function startSearch() {
+  if (!arrayChosen) return alert("Choose array first!");
+  const target = parseInt(document.getElementById('target').value);
+  if (isNaN(target)) return alert("Enter valid target");
+  animationSpeed = parseInt(document.getElementById('speed').value);
+  states = [];
+  currentStep = 0;
+  treeNodes = [];
+  const type = document.getElementById('searchType').value;
+  if (type === 'iterative') binarySearchIterative(target);
+  else binarySearchRecursive(target, 0, arr.length - 1, [], 0);
+  renderStep(0, target);
+}
+
+// Iterative Search
+function binarySearchIterative(target) {
+  let left = 0, right = arr.length - 1, visited = [];
+  while (left <= right) {
+    let mid = Math.floor((left + right) / 2);
+    visited.push(mid);
+    states.push({ low: left, high: right, mid: mid, visited: [...visited] });
+    if (arr[mid] === target) break;
+    else if (arr[mid] < target) left = mid + 1;
+    else right = mid - 1;
+  }
+}
+
+// Recursive Search
+function binarySearchRecursive(target, left, right, visited, step) {
+  if (left > right) return null;
+  let mid = Math.floor((left + right) / 2);
+  visited.push(mid);
+
+  let node = { low: left, high: right, mid: mid, visited: [...visited], step: step };
+  treeNodes.push(node);
+  states.push({ low: left, high: right, mid: mid, visited: [...visited] });
+
+  if (arr[mid] === target) return node;
+  step++;
+  if (arr[mid] > target) {
+    node.left = binarySearchRecursive(target, left, mid - 1, [...visited], step);
+  } else if (arr[mid] < target) {
+    node.right = binarySearchRecursive(target, mid + 1, right, [...visited], step);
+  }
+  return node;
+}
+
+// Render Step
+function renderStep(step, target) {
+  const { low, high, mid, visited } = states[step] || { low: -1, high: -1, mid: -1, visited: [] };
+  const targetIndex = arr.indexOf(target);
+  renderArray(low, high, mid, visited, targetIndex >= 0 ? targetIndex : -1);
+  renderTree(step);
+
+  if (step >= states.length - 1) {
+    if (targetIndex !== -1) {
+      document.getElementById('status').innerText = `Found ${target} at index ${targetIndex}`;
+      document.getElementById('stats').innerText = `Total Steps: ${states.length}`;
+    } else {
+      document.getElementById('status').innerText = `Number ${target} not found in array`;
+      document.getElementById('stats').innerText = `Total Steps: 0`;
+    }
+  }
+}
+
+// Step Forward
+function stepForward() {
+  if (currentStep < states.length - 1) {
+    currentStep++;
+    renderStep(currentStep, parseInt(document.getElementById('target').value));
+  }
+}
+
+// Step Backward
+function stepBackward() {
+  if (currentStep > 0) {
+    currentStep--;
+    renderStep(currentStep, parseInt(document.getElementById('target').value));
+  }
+}
+
+// Play/Pause
+function playPause() {
+  const target = parseInt(document.getElementById('target').value);
+  if (isNaN(target)) return alert("Enter valid target");
+  if (!isPlaying) {
+    isPlaying = true;
+    document.getElementById('playPauseText').innerText = 'Pause';
+    playAnimation(target);
+  } else {
+    isPlaying = false;
+    document.getElementById('playPauseText').innerText = 'Play';
+  }
+}
+
+function playAnimation(target) {
+  if (!isPlaying) return;
+  if (currentStep < states.length - 1) {
+    currentStep++;
+    renderStep(currentStep, target);
+    interval = setTimeout(() => playAnimation(target), animationSpeed);
+  } else {
+    isPlaying = false;
+    document.getElementById('playPauseText').innerText = 'Play';
+  }
+}
+
+// Reset Visualizer
+function resetVisualizer() {
+  arr = [];
+  states = [];
+  currentStep = 0;
+  treeNodes = [];
+  clearInterval(interval);
+  isPlaying = false;
+  document.getElementById('playPauseText').innerText = 'Play';
+  document.getElementById('arrayContainer').innerHTML = "";
+  document.getElementById('treeContainer').innerHTML = "";
+  document.getElementById('status').innerText = "";
+  document.getElementById('stats').innerText = "";
+  document.getElementById('target').value = "";
+  document.getElementById('manualArray').value = "";
+}
+</script>
+
+</body>
+</html>
